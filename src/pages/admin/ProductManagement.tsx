@@ -1,16 +1,46 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
 import { Plus, Edit, Trash2, Search, Filter, Upload } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import Button from '../../components/ui/Button';
-import toast from 'react-hot-toast';
+import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
+import { toast } from 'react-hot-toast';
+
+interface Product {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  originalPrice?: number;
+  category: string;
+  inStock: boolean;
+  stockQuantity: number;
+  preOrder: boolean;
+  estimatedDispatch?: string;
+  materials: string[];
+  sizes: string[];
+  colors: string[];
+  tags: string[];
+  images: string[];
+  rating: number;
+  reviewCount: number;
+  isFeatured: boolean;
+}
 
 const ProductManagement: React.FC = () => {
-  const { products, fetchProducts, addProduct, updateProduct, deleteProduct, categories, fetchCategories } = useStore();
+  const { user } = useStore();
+  const navigate = useNavigate();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [showForm, setShowForm] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<any>(null);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [previewImages, setPreviewImages] = useState<string[]>([]);
+
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -27,11 +57,50 @@ const ProductManagement: React.FC = () => {
     tags: '',
     isFeatured: false
   });
-  const [images, setImages] = useState<FileList | null>(null);
 
   useEffect(() => {
-    fetchProducts();
-    fetchCategories();
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        
+        // Fetch products
+        const productsResponse = await axios.get('/api/products');
+        const productsData = productsResponse.data.products.map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          description: p.description,
+          price: p.price,
+          originalPrice: p.originalPrice,
+          category: p.category,
+          inStock: p.inStock,
+          stockQuantity: p.stockQuantity,
+          preOrder: p.preOrder,
+          estimatedDispatch: p.estimatedDispatch,
+          materials: p.materials,
+          sizes: p.sizes,
+          colors: p.colors,
+          tags: p.tags,
+          images: p.images,
+          rating: p.rating,
+          reviewCount: p.reviewCount,
+          isFeatured: p.isFeatured
+        }));
+        
+        setProducts(productsData);
+        
+        // Fetch categories
+        const categoriesResponse = await axios.get('/api/categories');
+        setCategories(categoriesResponse.data.map((c: any) => c.name));
+        
+      } catch (error) {
+        toast.error('Failed to fetch data');
+        console.error(error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchData();
   }, []);
 
   const filteredProducts = products.filter(product => {
@@ -41,30 +110,71 @@ const ProductManagement: React.FC = () => {
     return matchesSearch && matchesCategory;
   });
 
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const files = Array.from(e.target.files);
+      setImageFiles(files);
+      
+      // Create preview URLs
+      const previews = files.map(file => URL.createObjectURL(file));
+      setPreviewImages(previews);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    const productFormData = new FormData();
-    Object.entries(formData).forEach(([key, value]) => {
-      productFormData.append(key, value.toString());
-    });
-
-    if (images) {
-      Array.from(images).forEach((file, index) => {
-        productFormData.append(`image${index}`, file);
+    try {
+      setLoading(true);
+      
+      const formDataToSend = new FormData();
+      formDataToSend.append('name', formData.name);
+      formDataToSend.append('description', formData.description);
+      formDataToSend.append('price', formData.price);
+      formDataToSend.append('originalPrice', formData.originalPrice);
+      formDataToSend.append('category', formData.category);
+      formDataToSend.append('inStock', String(formData.inStock));
+      formDataToSend.append('stockQuantity', formData.stockQuantity);
+      formDataToSend.append('preOrder', String(formData.preOrder));
+      formDataToSend.append('estimatedDispatch', formData.estimatedDispatch);
+      formDataToSend.append('materials', formData.materials);
+      formDataToSend.append('sizes', formData.sizes);
+      formDataToSend.append('colors', formData.colors);
+      formDataToSend.append('tags', formData.tags);
+      formDataToSend.append('isFeatured', String(formData.isFeatured));
+      
+      // Append image files
+      imageFiles.forEach((file, index) => {
+        formDataToSend.append(`image${index}`, file);
       });
-    }
-
-    let success = false;
-    if (editingProduct) {
-      success = await updateProduct(editingProduct.id, productFormData);
-    } else {
-      success = await addProduct(productFormData);
-    }
-
-    if (success) {
+      
+      let response;
+      if (editingProduct) {
+        response = await axios.put(`/api/admin/products/${editingProduct.id}`, formDataToSend, {
+          headers: {
+            'Content-Type': 'multipart/form-data'
+          }
+        });
+      } else {
+        response = await axios.post('/api/admin/products', formDataToSend, {
+          headers: {
+            'Content-Type': 'multipart/form-data'
+          }
+        });
+      }
+      
       toast.success(editingProduct ? 'Product updated successfully!' : 'Product added successfully!');
       resetForm();
+      
+      // Refresh product list
+      const productsResponse = await axios.get('/api/products');
+      setProducts(productsResponse.data.products);
+      
+    } catch (error) {
+      toast.error('Failed to save product');
+      console.error(error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -85,12 +195,13 @@ const ProductManagement: React.FC = () => {
       tags: '',
       isFeatured: false
     });
-    setImages(null);
+    setImageFiles([]);
+    setPreviewImages([]);
     setEditingProduct(null);
     setShowForm(false);
   };
 
-  const handleEdit = (product: any) => {
+  const handleEdit = (product: Product) => {
     setEditingProduct(product);
     setFormData({
       name: product.name,
@@ -99,26 +210,49 @@ const ProductManagement: React.FC = () => {
       originalPrice: product.originalPrice?.toString() || '',
       category: product.category,
       inStock: product.inStock,
-      stockQuantity: product.stockQuantity?.toString() || '',
+      stockQuantity: product.stockQuantity.toString(),
       preOrder: product.preOrder,
       estimatedDispatch: product.estimatedDispatch || '',
-      materials: product.materials?.join(', ') || '',
-      sizes: product.sizes?.join(', ') || '',
-      colors: product.colors?.join(', ') || '',
-      tags: product.tags?.join(', ') || '',
+      materials: product.materials.join(', '),
+      sizes: product.sizes.join(', '),
+      colors: product.colors.join(', '),
+      tags: product.tags.join(', '),
       isFeatured: product.isFeatured
     });
+    setPreviewImages(product.images);
     setShowForm(true);
   };
 
   const handleDelete = async (productId: string) => {
     if (window.confirm('Are you sure you want to delete this product?')) {
-      const success = await deleteProduct(productId);
-      if (success) {
+      try {
+        setLoading(true);
+        await axios.delete(`/api/admin/products/${productId}`);
         toast.success('Product deleted successfully!');
+        
+        // Refresh product list
+        const productsResponse = await axios.get('/api/products');
+        setProducts(productsResponse.data.products);
+        
+      } catch (error) {
+        toast.error('Failed to delete product');
+        console.error(error);
+      } finally {
+        setLoading(false);
       }
     }
   };
+
+  if (loading && !showForm) {
+    return (
+      <div className="min-h-screen bg-luxury-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="loading-spinner"></div>
+          <p className="mt-4 text-luxury-600">Loading products...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-luxury-50">
@@ -129,7 +263,10 @@ const ProductManagement: React.FC = () => {
             <h1 className="text-3xl font-bold text-luxury-800">Product Management</h1>
             <p className="text-luxury-600 mt-2">Manage your jewelry inventory</p>
           </div>
-          <Button onClick={() => setShowForm(true)}>
+          <Button onClick={() => {
+            resetForm();
+            setShowForm(true);
+          }}>
             <Plus className="h-4 w-4 mr-2" />
             Add Product
           </Button>
@@ -229,7 +366,7 @@ const ProductManagement: React.FC = () => {
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-luxury-900">
-                      {product.stockQuantity || 'N/A'}
+                      {product.stockQuantity}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
@@ -333,6 +470,7 @@ const ProductManagement: React.FC = () => {
                         type="number"
                         required
                         step="0.01"
+                        min="0"
                         value={formData.price}
                         onChange={(e) => setFormData(prev => ({ ...prev, price: e.target.value }))}
                         className="w-full px-3 py-2 border border-luxury-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500"
@@ -346,6 +484,7 @@ const ProductManagement: React.FC = () => {
                       <input
                         type="number"
                         step="0.01"
+                        min="0"
                         value={formData.originalPrice}
                         onChange={(e) => setFormData(prev => ({ ...prev, originalPrice: e.target.value }))}
                         className="w-full px-3 py-2 border border-luxury-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500"
@@ -358,6 +497,7 @@ const ProductManagement: React.FC = () => {
                       </label>
                       <input
                         type="number"
+                        min="0"
                         value={formData.stockQuantity}
                         onChange={(e) => setFormData(prev => ({ ...prev, stockQuantity: e.target.value }))}
                         className="w-full px-3 py-2 border border-luxury-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500"
@@ -427,9 +567,22 @@ const ProductManagement: React.FC = () => {
                       type="file"
                       multiple
                       accept="image/*"
-                      onChange={(e) => setImages(e.target.files)}
+                      onChange={handleImageChange}
                       className="w-full px-3 py-2 border border-luxury-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500"
                     />
+                    
+                    {/* Image previews */}
+                    <div className="mt-4 flex flex-wrap gap-4">
+                      {previewImages.map((image, index) => (
+                        <div key={index} className="relative">
+                          <img
+                            src={image}
+                            alt={`Preview ${index}`}
+                            className="w-24 h-24 object-cover rounded-lg"
+                          />
+                        </div>
+                      ))}
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -492,10 +645,14 @@ const ProductManagement: React.FC = () => {
                       type="button"
                       variant="outline"
                       onClick={resetForm}
+                      disabled={loading}
                     >
                       Cancel
                     </Button>
-                    <Button type="submit">
+                    <Button 
+                      type="submit" 
+                      loading={loading}
+                    >
                       {editingProduct ? 'Update Product' : 'Add Product'}
                     </Button>
                   </div>

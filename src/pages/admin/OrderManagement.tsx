@@ -1,21 +1,75 @@
 import React, { useEffect, useState } from 'react';
+import { Search, Filter, Eye, Edit, Package, Truck, RefreshCw } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { Search, Filter, Eye, Edit, Package, Truck } from 'lucide-react';
-import { useStore } from '../../store/useStore';
 import Button from '../../components/ui/Button';
-import toast from 'react-hot-toast';
+import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
+import { toast } from 'react-hot-toast';
+
+interface Order {
+  id: string;
+  orderNumber: string;
+  status: string;
+  paymentStatus: string;
+  total: number;
+  customerName: string;
+  customerEmail: string;
+  createdAt: string;
+  items: {
+    productName: string;
+    quantity: number;
+    price: number;
+    selectedSize?: string;
+    selectedColor?: string;
+  }[];
+}
 
 const OrderManagement: React.FC = () => {
-  const { orders, fetchOrders, updateOrderStatus } = useStore();
+  const [orders, setOrders] = useState<Order[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [selectedOrder, setSelectedOrder] = useState<any>(null);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [newStatus, setNewStatus] = useState('');
   const [trackingNumber, setTrackingNumber] = useState('');
   const [notes, setNotes] = useState('');
+  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
+
+  const statusOptions = [
+    'pending',
+    'confirmed',
+    'processing',
+    'shipped',
+    'delivered',
+    'cancelled'
+  ];
 
   useEffect(() => {
+    const fetchOrders = async () => {
+      try {
+        setLoading(true);
+        const response = await axios.get('/api/orders');
+        const ordersData = response.data.map((order: any) => ({
+          id: order.id,
+          orderNumber: order.orderNumber,
+          status: order.status,
+          paymentStatus: order.paymentStatus,
+          total: order.total,
+          customerName: order.customerName,
+          customerEmail: order.customerEmail,
+          createdAt: order.createdAt,
+          items: order.items
+        }));
+        setOrders(ordersData);
+      } catch (error) {
+        toast.error('Failed to fetch orders');
+        console.error(error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
     fetchOrders();
   }, []);
 
@@ -30,19 +84,30 @@ const OrderManagement: React.FC = () => {
   const handleStatusUpdate = async () => {
     if (!selectedOrder) return;
 
-    const success = await updateOrderStatus(selectedOrder.id, {
-      status: newStatus,
-      trackingNumber: trackingNumber || undefined,
-      notes: notes || undefined
-    });
+    try {
+      setLoading(true);
+      await axios.put(`/api/admin/orders/${selectedOrder.id}/status`, {
+        status: newStatus,
+        trackingNumber: trackingNumber || undefined,
+        notes: notes || undefined
+      });
 
-    if (success) {
+      // Update local state
+      setOrders(orders.map(order => 
+        order.id === selectedOrder.id ? { ...order, status: newStatus } : order
+      ));
+
       toast.success('Order status updated successfully!');
       setShowStatusModal(false);
       setSelectedOrder(null);
       setNewStatus('');
       setTrackingNumber('');
       setNotes('');
+    } catch (error) {
+      toast.error('Failed to update order status');
+      console.error(error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -58,14 +123,16 @@ const OrderManagement: React.FC = () => {
     }
   };
 
-  const statusOptions = [
-    'pending',
-    'confirmed',
-    'processing',
-    'shipped',
-    'delivered',
-    'cancelled'
-  ];
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-luxury-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="loading-spinner"></div>
+          <p className="mt-4 text-luxury-600">Loading orders...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-luxury-50">
@@ -154,7 +221,7 @@ const OrderManagement: React.FC = () => {
                       <div className="text-sm text-luxury-500">{order.customerEmail}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-luxury-900">
-                      {order.itemCount} items
+                      {order.items.length} items
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-luxury-900">
                       ${order.total.toLocaleString()}
@@ -235,7 +302,7 @@ const OrderManagement: React.FC = () => {
                 <div className="mb-6">
                   <h3 className="font-semibold text-luxury-800 mb-4">Order Items</h3>
                   <div className="space-y-3">
-                    {selectedOrder.items.map((item: any, index: number) => (
+                    {selectedOrder.items.map((item, index) => (
                       <div key={index} className="flex justify-between items-center p-3 bg-luxury-50 rounded">
                         <div>
                           <p className="font-medium text-luxury-800">{item.productName}</p>
@@ -350,10 +417,14 @@ const OrderManagement: React.FC = () => {
                       setTrackingNumber('');
                       setNotes('');
                     }}
+                    disabled={loading}
                   >
                     Cancel
                   </Button>
-                  <Button onClick={handleStatusUpdate}>
+                  <Button 
+                    onClick={handleStatusUpdate}
+                    loading={loading}
+                  >
                     Update Status
                   </Button>
                 </div>

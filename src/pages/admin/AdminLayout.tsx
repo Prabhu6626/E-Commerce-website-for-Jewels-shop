@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Link, Outlet, useLocation } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard,
   Package,
@@ -17,8 +17,9 @@ import { useStore } from '../../store/useStore';
 
 const AdminLayout: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { user, logout } = useStore();
+  const { user, logout, isAuthenticated } = useStore();
   const location = useLocation();
+  const navigate = useNavigate();
 
   const navigation = [
     { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
@@ -29,12 +30,29 @@ const AdminLayout: React.FC = () => {
     { name: 'Settings', href: '/admin/settings', icon: Settings },
   ];
 
+  useEffect(() => {
+    if (!isAuthenticated || user?.role !== 'admin') {
+      navigate('/login');
+    }
+  }, [isAuthenticated, user, navigate]);
+
   const isActive = (href: string) => {
     if (href === '/admin') {
       return location.pathname === '/admin';
     }
     return location.pathname.startsWith(href);
   };
+
+  if (!isAuthenticated || user?.role !== 'admin') {
+    return (
+      <div className="min-h-screen bg-luxury-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="loading-spinner"></div>
+          <p className="mt-4 text-luxury-600">Loading admin panel...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-luxury-50">

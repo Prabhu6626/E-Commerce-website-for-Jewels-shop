@@ -847,8 +847,7 @@ def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 # Initialize database
-@app.before_first_request
-def create_tables():
+with app.app_context():
     db.create_all()
     
     # Create admin user if not exists

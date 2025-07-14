@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   BarChart3, 
   Package, 
@@ -12,52 +12,102 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useStore } from '../../store/useStore';
-import { mockProducts } from '../../data/mockData';
 import Button from '../../components/ui/Button';
+import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
+import axios from 'axios';
+
+interface DashboardStats {
+  totalRevenue: number;
+  totalOrders: number;
+  totalProducts: number;
+  totalCustomers: number;
+  revenueChange: number;
+  ordersChange: number;
+  productsChange: number;
+  customersChange: number;
+}
+
+interface RecentOrder {
+  id: string;
+  orderNumber: string;
+  customerName: string;
+  total: number;
+  status: string;
+  date: string;
+}
+
+interface TopProduct {
+  id: string;
+  name: string;
+  price: number;
+  reviewCount: number;
+  image: string;
+}
 
 const AdminDashboard: React.FC = () => {
-  const { orders, user } = useStore();
+  const { user } = useStore();
+  const navigate = useNavigate();
   const [timeframe, setTimeframe] = useState('7d');
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<DashboardStats>({
+    totalRevenue: 0,
+    totalOrders: 0,
+    totalProducts: 0,
+    totalCustomers: 0,
+    revenueChange: 0,
+    ordersChange: 0,
+    productsChange: 0,
+    customersChange: 0,
+  });
+  const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
+  const [topProducts, setTopProducts] = useState<TopProduct[]>([]);
 
-  // Mock data for dashboard metrics
-  const metrics = {
-    totalRevenue: 124500,
-    totalOrders: 342,
-    totalProducts: mockProducts.length,
-    totalCustomers: 1248,
-    revenueChange: 12.5,
-    ordersChange: 8.2,
-    productsChange: 2.1,
-    customersChange: 15.3,
-  };
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        setLoading(true);
+        const response = await axios.get('/api/admin/dashboard');
+        const data = response.data;
+        
+        setStats({
+          totalRevenue: data.stats.totalRevenue,
+          totalOrders: data.stats.totalOrders,
+          totalProducts: data.stats.totalProducts,
+          totalCustomers: data.stats.totalCustomers,
+          revenueChange: 12.5, // You would calculate this from API
+          ordersChange: 8.2,
+          productsChange: 2.1,
+          customersChange: 15.3,
+        });
 
-  const recentOrders = [
-    {
-      id: '1',
-      customer: 'Sarah Johnson',
-      total: 1299,
-      status: 'confirmed',
-      date: '2024-01-15',
-    },
-    {
-      id: '2',
-      customer: 'Emily Davis',
-      total: 899,
-      status: 'processing',
-      date: '2024-01-15',
-    },
-    {
-      id: '3',
-      customer: 'Jessica Wilson',
-      total: 2499,
-      status: 'shipped',
-      date: '2024-01-14',
-    },
-  ];
+        setRecentOrders(data.recentOrders.map((order: any) => ({
+          id: order.id,
+          orderNumber: order.orderNumber,
+          customerName: order.customerName,
+          total: order.total,
+          status: order.status,
+          date: order.createdAt
+        })));
 
-  const topProducts = mockProducts
-    .sort((a, b) => b.reviewCount - a.reviewCount)
-    .slice(0, 5);
+        setTopProducts(data.topProducts.map((product: any) => ({
+          id: product.id,
+          name: product.name,
+          price: product.price,
+          reviewCount: product.reviewCount,
+          image: product.images?.[0] || ''
+        })));
+
+      } catch (error) {
+        toast.error('Failed to load dashboard data');
+        console.error(error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, [timeframe]);
 
   const StatCard = ({ title, value, change, icon: Icon, isPositive }: any) => (
     <motion.div
@@ -67,7 +117,9 @@ const AdminDashboard: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-medium text-luxury-600">{title}</p>
-          <p className="text-2xl font-bold text-luxury-800 mt-1">{value}</p>
+          <p className="text-2xl font-bold text-luxury-800 mt-1">
+            {title.includes('Revenue') ? `$${value.toLocaleString()}` : value.toLocaleString()}
+          </p>
         </div>
         <div className="p-3 bg-gold-100 rounded-lg">
           <Icon className="h-6 w-6 text-gold-600" />
@@ -86,6 +138,17 @@ const AdminDashboard: React.FC = () => {
       </div>
     </motion.div>
   );
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-luxury-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="loading-spinner"></div>
+          <p className="mt-4 text-luxury-600">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-luxury-50">
@@ -130,31 +193,31 @@ const AdminDashboard: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <StatCard
             title="Total Revenue"
-            value={`$${metrics.totalRevenue.toLocaleString()}`}
-            change={metrics.revenueChange}
+            value={stats.totalRevenue}
+            change={stats.revenueChange}
             icon={DollarSign}
-            isPositive={metrics.revenueChange > 0}
+            isPositive={stats.revenueChange > 0}
           />
           <StatCard
             title="Total Orders"
-            value={metrics.totalOrders.toLocaleString()}
-            change={metrics.ordersChange}
+            value={stats.totalOrders}
+            change={stats.ordersChange}
             icon={ShoppingCart}
-            isPositive={metrics.ordersChange > 0}
+            isPositive={stats.ordersChange > 0}
           />
           <StatCard
             title="Total Products"
-            value={metrics.totalProducts.toLocaleString()}
-            change={metrics.productsChange}
+            value={stats.totalProducts}
+            change={stats.productsChange}
             icon={Package}
-            isPositive={metrics.productsChange > 0}
+            isPositive={stats.productsChange > 0}
           />
           <StatCard
             title="Total Customers"
-            value={metrics.totalCustomers.toLocaleString()}
-            change={metrics.customersChange}
+            value={stats.totalCustomers}
+            change={stats.customersChange}
             icon={Users}
-            isPositive={metrics.customersChange > 0}
+            isPositive={stats.customersChange > 0}
           />
         </div>
 
@@ -168,7 +231,11 @@ const AdminDashboard: React.FC = () => {
             <div className="p-6 border-b border-luxury-200">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-luxury-800">Recent Orders</h3>
-                <Button variant="ghost" size="sm">
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => navigate('/admin/orders')}
+                >
                   <Eye className="h-4 w-4 mr-2" />
                   View All
                 </Button>
@@ -179,8 +246,8 @@ const AdminDashboard: React.FC = () => {
                 <div key={order.id} className="p-6 border-b border-luxury-100 last:border-b-0">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-medium text-luxury-800">{order.customer}</p>
-                      <p className="text-sm text-luxury-600">Order #{order.id}</p>
+                      <p className="font-medium text-luxury-800">{order.customerName}</p>
+                      <p className="text-sm text-luxury-600">Order #{order.orderNumber}</p>
                     </div>
                     <div className="text-right">
                       <p className="font-medium text-luxury-800">
@@ -209,7 +276,11 @@ const AdminDashboard: React.FC = () => {
             <div className="p-6 border-b border-luxury-200">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-luxury-800">Top Products</h3>
-                <Button variant="ghost" size="sm">
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => navigate('/admin/products')}
+                >
                   <Plus className="h-4 w-4 mr-2" />
                   Add Product
                 </Button>
@@ -221,7 +292,7 @@ const AdminDashboard: React.FC = () => {
                   <div className="flex items-center space-x-4">
                     <div className="flex-shrink-0">
                       <img
-                        src={product.images[0]}
+                        src={product.image}
                         alt={product.name}
                         className="w-12 h-12 rounded-lg object-cover"
                       />
@@ -257,7 +328,11 @@ const AdminDashboard: React.FC = () => {
         >
           <h3 className="text-lg font-semibold text-luxury-800 mb-4">Quick Actions</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Button variant="outline" className="justify-start h-auto p-4">
+            <Button 
+              variant="outline" 
+              className="justify-start h-auto p-4"
+              onClick={() => navigate('/admin/products/new')}
+            >
               <Package className="h-5 w-5 mr-3" />
               <div className="text-left">
                 <p className="font-medium">Add Product</p>
@@ -265,7 +340,11 @@ const AdminDashboard: React.FC = () => {
               </div>
             </Button>
             
-            <Button variant="outline" className="justify-start h-auto p-4">
+            <Button 
+              variant="outline" 
+              className="justify-start h-auto p-4"
+              onClick={() => navigate('/admin/orders')}
+            >
               <ShoppingCart className="h-5 w-5 mr-3" />
               <div className="text-left">
                 <p className="font-medium">View Orders</p>
@@ -273,7 +352,11 @@ const AdminDashboard: React.FC = () => {
               </div>
             </Button>
             
-            <Button variant="outline" className="justify-start h-auto p-4">
+            <Button 
+              variant="outline" 
+              className="justify-start h-auto p-4"
+              onClick={() => navigate('/admin/customers')}
+            >
               <Users className="h-5 w-5 mr-3" />
               <div className="text-left">
                 <p className="font-medium">Customer List</p>
@@ -281,7 +364,11 @@ const AdminDashboard: React.FC = () => {
               </div>
             </Button>
             
-            <Button variant="outline" className="justify-start h-auto p-4">
+            <Button 
+              variant="outline" 
+              className="justify-start h-auto p-4"
+              onClick={() => navigate('/admin/analytics')}
+            >
               <BarChart3 className="h-5 w-5 mr-3" />
               <div className="text-left">
                 <p className="font-medium">Analytics</p>
